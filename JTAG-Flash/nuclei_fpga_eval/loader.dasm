@@ -1,0 +1,655 @@
+
+build/rv32/loader.elf:     file format elf32-littleriscv
+
+
+Disassembly of section .text:
+
+20000000 <_start>:
+#endif
+
+	.section .text.entry
+	.global _start
+_start:
+	lla sp, stack_end
+20000000:	00000117          	auipc	sp,0x0
+20000004:	5fc10113          	addi	sp,sp,1532 # 200005fc <stack_end>
+	jal loader_main
+20000008:	008000ef          	jal	ra,20000010 <loader_main>
+	ebreak
+2000000c:	00100073          	ebreak
+
+20000010 <loader_main>:
+
+#define RETURN_OK           (0)
+#define RETURN_ERROR        (0x1 << 31)
+
+int loader_main(uint32_t cs, uint32_t *spi_base, uint32_t params1, uint32_t params2, uint32_t params3)
+{
+20000010:	00050793          	mv	a5,a0
+20000014:	00058513          	mv	a0,a1
+20000018:	00060593          	mv	a1,a2
+2000001c:	00068613          	mv	a2,a3
+20000020:	00070693          	mv	a3,a4
+    int retval = 0;
+    unsigned long params1_temp = params1;
+    switch (cs)
+20000024:	00300713          	li	a4,3
+20000028:	02e78a63          	beq	a5,a4,2000005c <loader_main+0x4c>
+2000002c:	00f76e63          	bltu	a4,a5,20000048 <loader_main+0x38>
+20000030:	00100713          	li	a4,1
+20000034:	02e78063          	beq	a5,a4,20000054 <loader_main+0x44>
+20000038:	00200713          	li	a4,2
+2000003c:	00e78e63          	beq	a5,a4,20000058 <loader_main+0x48>
+    default:
+        retval = RETURN_ERROR;
+        break;
+    }
+    return retval;
+}
+20000040:	80000537          	lui	a0,0x80000
+20000044:	00008067          	ret
+    switch (cs)
+20000048:	00400713          	li	a4,4
+2000004c:	fee79ae3          	bne	a5,a4,20000040 <loader_main+0x30>
+        retval = flash_init(spi_base);
+20000050:	15c0006f          	j	200001ac <flash_init>
+        retval = flash_erase(spi_base, params1, params2);
+20000054:	19c0006f          	j	200001f0 <flash_erase>
+        retval = flash_write(spi_base, (uint8_t*)params1_temp, params2, params3);
+20000058:	2880006f          	j	200002e0 <flash_write>
+        retval = flash_read(spi_base, (uint8_t*)params1_temp, params2, params3);
+2000005c:	4240006f          	j	20000480 <flash_read>
+
+20000060 <UartWait>:
+		reg_write(0x3000025C,0x00000000);
+}
+
+static void UartWait()
+{
+	unsigned int ts = read_csr(mcycle);
+20000060:	b00026f3          	csrr	a3,mcycle
+	asm("nop");
+20000064:	00000013          	nop
+	unsigned int dset = MCYCLE_FREQ / 115200 - 38;
+	unsigned int dnow;
+	do
+		dnow = read_csr(mcycle) - ts;
+	while(dnow <= dset);
+20000068:	18c00713          	li	a4,396
+		dnow = read_csr(mcycle) - ts;
+2000006c:	b00027f3          	csrr	a5,mcycle
+20000070:	40d787b3          	sub	a5,a5,a3
+	while(dnow <= dset);
+20000074:	fef77ce3          	bgeu	a4,a5,2000006c <UartWait+0xc>
+}
+20000078:	00008067          	ret
+
+2000007c <Myputchar>:
+	for(i=0;i<16;i++)
+		UartWait();
+}
+
+static void Myputchar(char a)
+{//这个时序可能被中断打断，导致输出乱码
+2000007c:	ff410113          	addi	sp,sp,-12
+20000080:	00812223          	sw	s0,4(sp)
+20000084:	00912023          	sw	s1,0(sp)
+20000088:	00112423          	sw	ra,8(sp)
+		reg_write(0x3000025C,0x00000000);
+2000008c:	300007b7          	lui	a5,0x30000
+20000090:	2407ae23          	sw	zero,604(a5) # 3000025c <stack_end+0xffffc60>
+{//这个时序可能被中断打断，导致输出乱码
+20000094:	00050413          	mv	s0,a0
+	int i = 8;
+	UartOut(0);//发送启始位
+	UartWait();
+	while(i--)//发送8位数据位
+20000098:	00900493          	li	s1,9
+	UartWait();
+2000009c:	fc5ff0ef          	jal	ra,20000060 <UartWait>
+	while(i--)//发送8位数据位
+200000a0:	fff48493          	addi	s1,s1,-1
+200000a4:	02049263          	bnez	s1,200000c8 <Myputchar+0x4c>
+		UartWait();
+		a = a >> 1;
+	}
+	UartOut(1);//发送结束位
+	UartWait();
+}
+200000a8:	00412403          	lw	s0,4(sp)
+200000ac:	00812083          	lw	ra,8(sp)
+200000b0:	00012483          	lw	s1,0(sp)
+		reg_write(0x3000025C,0x00000001);
+200000b4:	300007b7          	lui	a5,0x30000
+200000b8:	00100713          	li	a4,1
+200000bc:	24e7ae23          	sw	a4,604(a5) # 3000025c <stack_end+0xffffc60>
+}
+200000c0:	00c10113          	addi	sp,sp,12
+	UartWait();
+200000c4:	f9dff06f          	j	20000060 <UartWait>
+	if(val)
+200000c8:	00147793          	andi	a5,s0,1
+200000cc:	30000737          	lui	a4,0x30000
+200000d0:	00078c63          	beqz	a5,200000e8 <Myputchar+0x6c>
+		reg_write(0x3000025C,0x00000001);
+200000d4:	00100793          	li	a5,1
+200000d8:	24f72e23          	sw	a5,604(a4) # 3000025c <stack_end+0xffffc60>
+		UartWait();
+200000dc:	f85ff0ef          	jal	ra,20000060 <UartWait>
+		a = a >> 1;
+200000e0:	00145413          	srli	s0,s0,0x1
+200000e4:	fbdff06f          	j	200000a0 <Myputchar+0x24>
+		reg_write(0x3000025C,0x00000000);
+200000e8:	24072e23          	sw	zero,604(a4)
+200000ec:	ff1ff06f          	j	200000dc <Myputchar+0x60>
+
+200000f0 <LogInt>:
+//--------------------------------------------------------------------------------
+static void LogInt(int a)
+{
+200000f0:	ff410113          	addi	sp,sp,-12
+200000f4:	00812223          	sw	s0,4(sp)
+200000f8:	00912023          	sw	s1,0(sp)
+200000fc:	00112423          	sw	ra,8(sp)
+20000100:	00050413          	mv	s0,a0
+20000104:	01c00493          	li	s1,28
+	int i, t;
+	for(i=0;i<8;i++)
+	{
+		t = (a>>(28-i*4)) & 0xf;
+20000108:	409457b3          	sra	a5,s0,s1
+2000010c:	00f7f693          	andi	a3,a5,15
+		if(t < 10)
+20000110:	00900713          	li	a4,9
+20000114:	02d74663          	blt	a4,a3,20000140 <LogInt+0x50>
+			Myputchar(t + '0');
+20000118:	03068513          	addi	a0,a3,48
+		else
+			Myputchar(t + 'A' - 10);
+2000011c:	f61ff0ef          	jal	ra,2000007c <Myputchar>
+	for(i=0;i<8;i++)
+20000120:	ffc48493          	addi	s1,s1,-4
+20000124:	ffc00793          	li	a5,-4
+20000128:	fef490e3          	bne	s1,a5,20000108 <LogInt+0x18>
+	}
+}
+2000012c:	00812083          	lw	ra,8(sp)
+20000130:	00412403          	lw	s0,4(sp)
+20000134:	00012483          	lw	s1,0(sp)
+20000138:	00c10113          	addi	sp,sp,12
+2000013c:	00008067          	ret
+			Myputchar(t + 'A' - 10);
+20000140:	03768513          	addi	a0,a3,55
+20000144:	fd9ff06f          	j	2000011c <LogInt+0x2c>
+
+20000148 <LogInt2>:
+
+static void LogInt2(int flag, int a, int b)
+{
+20000148:	ff010113          	addi	sp,sp,-16
+2000014c:	00812423          	sw	s0,8(sp)
+20000150:	00050413          	mv	s0,a0
+	Myputchar((flag>>0) & 0xff);
+20000154:	0ff57513          	zext.b	a0,a0
+{
+20000158:	00112623          	sw	ra,12(sp)
+2000015c:	00912223          	sw	s1,4(sp)
+20000160:	00b12023          	sw	a1,0(sp)
+20000164:	00060493          	mv	s1,a2
+	Myputchar((flag>>8) & 0xff);
+20000168:	40845413          	srai	s0,s0,0x8
+	Myputchar((flag>>0) & 0xff);
+2000016c:	f11ff0ef          	jal	ra,2000007c <Myputchar>
+	Myputchar((flag>>8) & 0xff);
+20000170:	0ff47513          	zext.b	a0,s0
+20000174:	f09ff0ef          	jal	ra,2000007c <Myputchar>
+	LogInt(a);
+20000178:	00012583          	lw	a1,0(sp)
+2000017c:	00058513          	mv	a0,a1
+20000180:	f71ff0ef          	jal	ra,200000f0 <LogInt>
+	Myputchar(',');
+20000184:	02c00513          	li	a0,44
+20000188:	ef5ff0ef          	jal	ra,2000007c <Myputchar>
+	LogInt(b);
+2000018c:	00048513          	mv	a0,s1
+20000190:	f61ff0ef          	jal	ra,200000f0 <LogInt>
+	Myputchar('\n');
+}
+20000194:	00812403          	lw	s0,8(sp)
+20000198:	00c12083          	lw	ra,12(sp)
+2000019c:	00412483          	lw	s1,4(sp)
+	Myputchar('\n');
+200001a0:	00a00513          	li	a0,10
+}
+200001a4:	01010113          	addi	sp,sp,16
+	Myputchar('\n');
+200001a8:	ed5ff06f          	j	2000007c <Myputchar>
+
+200001ac <flash_init>:
+
+int flash_init(uint32_t *spi_base)
+{//Flash初始化，入口参数是指定SPI的地址，3775用不上
+200001ac:	ff410113          	addi	sp,sp,-12
+200001b0:	00112423          	sw	ra,8(sp)
+200001b4:	00812223          	sw	s0,4(sp)
+    asm("csrw 0x7ca, 0x1");
+200001b8:	7ca0d073          	csrwi	mcache_ctl,1
+    asm("fence.i");
+200001bc:	0000100f          	fence.i
+		reg_write(0x3000025C,0x00000001);
+200001c0:	300007b7          	lui	a5,0x30000
+200001c4:	00100713          	li	a4,1
+200001c8:	24e7ae23          	sw	a4,604(a5) # 3000025c <stack_end+0xffffc60>
+200001cc:	01000413          	li	s0,16
+	for(i=0;i<16;i++)
+200001d0:	fff40413          	addi	s0,s0,-1
+		UartWait();
+200001d4:	e8dff0ef          	jal	ra,20000060 <UartWait>
+	for(i=0;i<16;i++)
+200001d8:	fe041ce3          	bnez	s0,200001d0 <flash_init+0x24>
+	LogInit();
+//	GD_LOGD("flash init");
+    return 0;//返回chipid
+}
+200001dc:	00812083          	lw	ra,8(sp)
+200001e0:	00412403          	lw	s0,4(sp)
+200001e4:	00000513          	li	a0,0
+200001e8:	00c10113          	addi	sp,sp,12
+200001ec:	00008067          	ret
+
+200001f0 <flash_erase>:
+
+int flash_erase(uint32_t *spi_base, uint32_t start_addr, uint32_t end_addr)
+{
+//	GD_LOGD("flash earse %08x %08x", start_addr, end_addr);
+	LogInt2('S' + (':'<<8), start_addr, end_addr);
+200001f0:	00004537          	lui	a0,0x4
+{
+200001f4:	ff410113          	addi	sp,sp,-12
+	LogInt2('S' + (':'<<8), start_addr, end_addr);
+200001f8:	a5350513          	addi	a0,a0,-1453 # 3a53 <_start-0x1fffc5ad>
+{
+200001fc:	00812223          	sw	s0,4(sp)
+20000200:	00912023          	sw	s1,0(sp)
+20000204:	00058413          	mv	s0,a1
+20000208:	00060493          	mv	s1,a2
+2000020c:	00112423          	sw	ra,8(sp)
+	LogInt2('S' + (':'<<8), start_addr, end_addr);
+20000210:	f39ff0ef          	jal	ra,20000148 <LogInt2>
+	if(start_addr & 0xfff)
+20000214:	00001637          	lui	a2,0x1
+20000218:	fff60613          	addi	a2,a2,-1 # fff <_start-0x1ffff001>
+2000021c:	00c477b3          	and	a5,s0,a2
+20000220:	02078063          	beqz	a5,20000240 <flash_erase+0x50>
+	{//简化问题，只做sector对齐的
+//		GD_LOGD("ERR erase addr");
+		return FLASH_ERR | start_addr;
+20000224:	80000537          	lui	a0,0x80000
+20000228:	00a46533          	or	a0,s0,a0
+		}
+	}
+    reg_write(FLASH_CTRL,0x00000001);//enable cache
+//	GD_LOGD("flash earse return");
+    return 0;
+}
+2000022c:	00812083          	lw	ra,8(sp)
+20000230:	00412403          	lw	s0,4(sp)
+20000234:	00012483          	lw	s1,0(sp)
+20000238:	00c10113          	addi	sp,sp,12
+2000023c:	00008067          	ret
+    uint32_t sector_num = (end_addr - start_addr + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE;
+20000240:	00c484b3          	add	s1,s1,a2
+		reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_WREN));//FLASH WREN
+20000244:	80000737          	lui	a4,0x80000
+    reg_write(FLASH_CTRL,0x00000000);//disable cache
+20000248:	600607b7          	lui	a5,0x60060
+    uint32_t sector_num = (end_addr - start_addr + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE;
+2000024c:	408484b3          	sub	s1,s1,s0
+		reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_WREN));//FLASH WREN
+20000250:	00670593          	addi	a1,a4,6 # 80000006 <stack_end+0x5ffffa0a>
+		reg_write(FLASH_COMD,(0x80000000 | 0x20));//60擦整片，20擦SPIFLASH_SECTOR_SIZE
+20000254:	02070513          	addi	a0,a4,32
+    reg_write(FLASH_CTRL,0x00000000);//disable cache
+20000258:	0007a823          	sw	zero,16(a5) # 60060010 <stack_end+0x4005fa14>
+    uint32_t sector_num = (end_addr - start_addr + FLASH_SECTOR_SIZE - 1) / FLASH_SECTOR_SIZE;
+2000025c:	00c4d493          	srli	s1,s1,0xc
+    for (int i = 0;i < sector_num;i++) 
+20000260:	00000693          	li	a3,0
+			reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_RDSR));
+20000264:	00570713          	addi	a4,a4,5
+    for (int i = 0;i < sector_num;i++) 
+20000268:	00969c63          	bne	a3,s1,20000280 <flash_erase+0x90>
+    reg_write(FLASH_CTRL,0x00000001);//enable cache
+2000026c:	600607b7          	lui	a5,0x60060
+20000270:	00100713          	li	a4,1
+20000274:	00e7a823          	sw	a4,16(a5) # 60060010 <stack_end+0x4005fa14>
+    return 0;
+20000278:	00000513          	li	a0,0
+2000027c:	fb1ff06f          	j	2000022c <flash_erase+0x3c>
+		reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_WREN));//FLASH WREN
+20000280:	00c69613          	slli	a2,a3,0xc
+20000284:	00b7a023          	sw	a1,0(a5)
+		reg_write(FLASH_ADDR, start_addr + i*FLASH_SECTOR_SIZE);//整片擦除时无效
+20000288:	00860633          	add	a2,a2,s0
+2000028c:	00c7a223          	sw	a2,4(a5)
+		reg_write(FLASH_COMD,(0x80000000 | 0x20));//60擦整片，20擦SPIFLASH_SECTOR_SIZE
+20000290:	00a7a023          	sw	a0,0(a5)
+		rdata = reg_read(FLASH_COMD);
+20000294:	0007a603          	lw	a2,0(a5)
+		while(rdata & 0x8000000)
+20000298:	08000337          	lui	t1,0x8000
+2000029c:	00667633          	and	a2,a2,t1
+200002a0:	02061c63          	bnez	a2,200002d8 <flash_erase+0xe8>
+		reg_write(FLASH_INTS,0xFFFFFFFF);
+200002a4:	fff00613          	li	a2,-1
+200002a8:	00c7ac23          	sw	a2,24(a5)
+			reg_write(FLASH_INTS,0xFFFFFFFF);
+200002ac:	fff00313          	li	t1,-1
+			reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_RDSR));
+200002b0:	00e7a023          	sw	a4,0(a5)
+				rdata = reg_read(FLASH_INTS);
+200002b4:	0187a603          	lw	a2,24(a5)
+			while((rdata & 0x00000004) == 0x0)
+200002b8:	00467613          	andi	a2,a2,4
+200002bc:	fe060ce3          	beqz	a2,200002b4 <flash_erase+0xc4>
+			wip = reg_read(FLASH_RDATA);
+200002c0:	00c7a603          	lw	a2,12(a5)
+			reg_write(FLASH_INTS,0xFFFFFFFF);
+200002c4:	0067ac23          	sw	t1,24(a5)
+		while(wip & 0x00000001)
+200002c8:	00167613          	andi	a2,a2,1
+200002cc:	fe0612e3          	bnez	a2,200002b0 <flash_erase+0xc0>
+    for (int i = 0;i < sector_num;i++) 
+200002d0:	00168693          	addi	a3,a3,1
+200002d4:	f95ff06f          	j	20000268 <flash_erase+0x78>
+			rdata = reg_read(FLASH_COMD);
+200002d8:	0007a603          	lw	a2,0(a5)
+200002dc:	fc1ff06f          	j	2000029c <flash_erase+0xac>
+
+200002e0 <flash_write>:
+
+int flash_write(uint32_t *spi_base, uint8_t* buffer, uint32_t offset, uint32_t count)
+{
+200002e0:	ff010113          	addi	sp,sp,-16
+	LogInt2('W' + (':'<<8), offset, count);
+200002e4:	000047b7          	lui	a5,0x4
+{
+200002e8:	00812423          	sw	s0,8(sp)
+	LogInt2('W' + (':'<<8), offset, count);
+200002ec:	a5778513          	addi	a0,a5,-1449 # 3a57 <_start-0x1fffc5a9>
+{
+200002f0:	00058413          	mv	s0,a1
+200002f4:	00060593          	mv	a1,a2
+	LogInt2('W' + (':'<<8), offset, count);
+200002f8:	00068613          	mv	a2,a3
+{
+200002fc:	00912223          	sw	s1,4(sp)
+	LogInt2('W' + (':'<<8), offset, count);
+20000300:	00b12023          	sw	a1,0(sp)
+{
+20000304:	00112623          	sw	ra,12(sp)
+20000308:	00068493          	mv	s1,a3
+	LogInt2('W' + (':'<<8), offset, count);
+2000030c:	e3dff0ef          	jal	ra,20000148 <LogInt2>
+	//LogInt2('D' + ('T'<<8), ((uint32_t*)buffer)[0x14/4], ((uint32_t*)buffer)[0x18/4]);
+	if((((uint32_t)buffer) & 3))
+20000310:	00347713          	andi	a4,s0,3
+20000314:	00012583          	lw	a1,0(sp)
+20000318:	02070863          	beqz	a4,20000348 <flash_write+0x68>
+2000031c:	000047b7          	lui	a5,0x4
+	{//先简化问题，只做4字节对其的
+		LogInt2('E' + (':'<<8), offset, (int)buffer);
+20000320:	a4578513          	addi	a0,a5,-1467 # 3a45 <_start-0x1fffc5bb>
+20000324:	00040613          	mv	a2,s0
+20000328:	e21ff0ef          	jal	ra,20000148 <LogInt2>
+		return FLASH_ERR | (uint32_t)buffer;
+2000032c:	80000537          	lui	a0,0x80000
+20000330:	00a46533          	or	a0,s0,a0
+        write_count += cur_count;
+    }
+    reg_write(FLASH_CTRL,0x00000001);//enable cache
+	LogInt2('W' + ('n'<<8), write_count, (int)buffer);
+    return 0;
+}
+20000334:	00c12083          	lw	ra,12(sp)
+20000338:	00812403          	lw	s0,8(sp)
+2000033c:	00412483          	lw	s1,4(sp)
+20000340:	01010113          	addi	sp,sp,16
+20000344:	00008067          	ret
+    reg_write(FLASH_CTRL,0x00000000);//disable cache
+20000348:	600607b7          	lui	a5,0x60060
+		reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_WREN)); //FLASH WREN , erase will reset WEL
+2000034c:	80000637          	lui	a2,0x80000
+    uint32_t cur_offset = offset % FLASH_PAGE_SIZE;
+20000350:	0ff5f693          	zext.b	a3,a1
+    reg_write(FLASH_CTRL,0x00000000);//disable cache
+20000354:	0007a823          	sw	zero,16(a5) # 60060010 <stack_end+0x4005fa14>
+	int write_count = 0;
+20000358:	00000513          	li	a0,0
+		for(i=0;i<4 && i<cur_count/4;i++)
+2000035c:	00400313          	li	t1,4
+			reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_RDSR));
+20000360:	00560293          	addi	t0,a2,5 # 80000005 <stack_end+0x5ffffa09>
+    while ((int)count > 0)
+20000364:	02904663          	bgtz	s1,20000390 <flash_write+0xb0>
+    reg_write(FLASH_CTRL,0x00000001);//enable cache
+20000368:	600607b7          	lui	a5,0x60060
+2000036c:	00100713          	li	a4,1
+	LogInt2('W' + ('n'<<8), write_count, (int)buffer);
+20000370:	00050593          	mv	a1,a0
+20000374:	00007537          	lui	a0,0x7
+20000378:	e5750513          	addi	a0,a0,-425 # 6e57 <_start-0x1fff91a9>
+    reg_write(FLASH_CTRL,0x00000001);//enable cache
+2000037c:	00e7a823          	sw	a4,16(a5) # 60060010 <stack_end+0x4005fa14>
+	LogInt2('W' + ('n'<<8), write_count, (int)buffer);
+20000380:	00040613          	mv	a2,s0
+20000384:	dc5ff0ef          	jal	ra,20000148 <LogInt2>
+    return 0;
+20000388:	00000513          	li	a0,0
+2000038c:	fa9ff06f          	j	20000334 <flash_write+0x54>
+        if ((cur_offset + count) >= FLASH_PAGE_SIZE)
+20000390:	00d48733          	add	a4,s1,a3
+20000394:	0ff00393          	li	t2,255
+20000398:	0ae3f463          	bgeu	t2,a4,20000440 <flash_write+0x160>
+            cur_count = FLASH_PAGE_SIZE - cur_offset;
+2000039c:	10000713          	li	a4,256
+200003a0:	40d70733          	sub	a4,a4,a3
+		for(i=0;i<4 && i<cur_count/4;i++)
+200003a4:	00275093          	srli	ra,a4,0x2
+200003a8:	00000693          	li	a3,0
+200003ac:	00d08e63          	beq	ra,a3,200003c8 <flash_write+0xe8>
+			reg_write(FLASH_WDATA,((uint32_t*)buffer)[i]);
+200003b0:	00269393          	slli	t2,a3,0x2
+200003b4:	007403b3          	add	t2,s0,t2
+200003b8:	0003a383          	lw	t2,0(t2)
+		for(i=0;i<4 && i<cur_count/4;i++)
+200003bc:	00168693          	addi	a3,a3,1
+			reg_write(FLASH_WDATA,((uint32_t*)buffer)[i]);
+200003c0:	0077a623          	sw	t2,12(a5)
+		for(i=0;i<4 && i<cur_count/4;i++)
+200003c4:	fe6694e3          	bne	a3,t1,200003ac <flash_write+0xcc>
+		reg_write(FLASH_ADDR,offset);//program address      
+200003c8:	00b7a223          	sw	a1,4(a5)
+		reg_write(FLASH_DATN,cur_count-1);//program length 256Byte
+200003cc:	fff70393          	addi	t2,a4,-1
+200003d0:	0077a423          	sw	t2,8(a5)
+		reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_WREN)); //FLASH WREN , erase will reset WEL
+200003d4:	00660393          	addi	t2,a2,6
+200003d8:	0077a023          	sw	t2,0(a5)
+		asm("nop");
+200003dc:	00000013          	nop
+		reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_PP));   //FLASH PRO
+200003e0:	00260393          	addi	t2,a2,2
+200003e4:	0077a023          	sw	t2,0(a5)
+		for(;i<cur_count/4;i++)
+200003e8:	0616e663          	bltu	a3,ra,20000454 <flash_write+0x174>
+		asm("nop");
+200003ec:	00000013          	nop
+		rdata = reg_read(FLASH_COMD);
+200003f0:	0007a683          	lw	a3,0(a5)
+		while(rdata & 0x8000000)
+200003f4:	080003b7          	lui	t2,0x8000
+200003f8:	0076f6b3          	and	a3,a3,t2
+200003fc:	06069e63          	bnez	a3,20000478 <flash_write+0x198>
+		reg_write(FLASH_INTS,0xFFFFFFFF);
+20000400:	fff00693          	li	a3,-1
+20000404:	00d7ac23          	sw	a3,24(a5)
+			reg_write(FLASH_INTS,0xFFFFFFFF);
+20000408:	fff00393          	li	t2,-1
+			reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_RDSR));
+2000040c:	0057a023          	sw	t0,0(a5)
+				rdata = reg_read(FLASH_INTS);
+20000410:	0187a683          	lw	a3,24(a5)
+			while((rdata & 0x00000004) == 0x0)
+20000414:	0046f693          	andi	a3,a3,4
+20000418:	fe068ce3          	beqz	a3,20000410 <flash_write+0x130>
+			wip = reg_read(FLASH_RDATA);
+2000041c:	00c7a683          	lw	a3,12(a5)
+			reg_write(FLASH_INTS,0xFFFFFFFF);
+20000420:	0077ac23          	sw	t2,24(a5)
+		while(wip & 0x00000001)
+20000424:	0016f693          	andi	a3,a3,1
+20000428:	fe0692e3          	bnez	a3,2000040c <flash_write+0x12c>
+        buffer += cur_count;
+2000042c:	00e40433          	add	s0,s0,a4
+        offset += cur_count;
+20000430:	00e585b3          	add	a1,a1,a4
+        count -= cur_count;
+20000434:	40e484b3          	sub	s1,s1,a4
+        write_count += cur_count;
+20000438:	00e50533          	add	a0,a0,a4
+2000043c:	f29ff06f          	j	20000364 <flash_write+0x84>
+			if(cur_count > FLASH_PAGE_SIZE)
+20000440:	10000693          	li	a3,256
+20000444:	00048713          	mv	a4,s1
+20000448:	f496fee3          	bgeu	a3,s1,200003a4 <flash_write+0xc4>
+2000044c:	10000713          	li	a4,256
+20000450:	f55ff06f          	j	200003a4 <flash_write+0xc4>
+			while((reg_read(FLASH_INTS) & 0x20) == 0x0);
+20000454:	0187a383          	lw	t2,24(a5)
+20000458:	0203f393          	andi	t2,t2,32
+2000045c:	fe038ce3          	beqz	t2,20000454 <flash_write+0x174>
+			reg_write(FLASH_WDATA,((uint32_t*)buffer)[i]);
+20000460:	00269393          	slli	t2,a3,0x2
+20000464:	007403b3          	add	t2,s0,t2
+20000468:	0003a383          	lw	t2,0(t2) # 8000000 <_start-0x18000000>
+		for(;i<cur_count/4;i++)
+2000046c:	00168693          	addi	a3,a3,1
+			reg_write(FLASH_WDATA,((uint32_t*)buffer)[i]);
+20000470:	0077a623          	sw	t2,12(a5)
+		for(;i<cur_count/4;i++)
+20000474:	f75ff06f          	j	200003e8 <flash_write+0x108>
+			rdata = reg_read(FLASH_COMD);
+20000478:	0007a683          	lw	a3,0(a5)
+2000047c:	f7dff06f          	j	200003f8 <flash_write+0x118>
+
+20000480 <flash_read>:
+
+int flash_read(uint32_t *spi_base, uint8_t* buffer, uint32_t offset, uint32_t count)
+{
+20000480:	ff010113          	addi	sp,sp,-16
+//	GD_LOGD("flash read %08x %08x", offset, count);
+	LogInt2('R' + (':'<<8), offset, count);
+20000484:	00004737          	lui	a4,0x4
+{
+20000488:	00812423          	sw	s0,8(sp)
+	LogInt2('R' + (':'<<8), offset, count);
+2000048c:	a5270513          	addi	a0,a4,-1454 # 3a52 <_start-0x1fffc5ae>
+{
+20000490:	00058413          	mv	s0,a1
+20000494:	00060593          	mv	a1,a2
+	LogInt2('R' + (':'<<8), offset, count);
+20000498:	00068613          	mv	a2,a3
+{
+2000049c:	00912223          	sw	s1,4(sp)
+	LogInt2('R' + (':'<<8), offset, count);
+200004a0:	00b12023          	sw	a1,0(sp)
+{
+200004a4:	00112623          	sw	ra,12(sp)
+200004a8:	00068493          	mv	s1,a3
+	LogInt2('R' + (':'<<8), offset, count);
+200004ac:	c9dff0ef          	jal	ra,20000148 <LogInt2>
+	if((((uint32_t)buffer) & 3) | (offset & 3))
+200004b0:	00012583          	lw	a1,0(sp)
+200004b4:	00b467b3          	or	a5,s0,a1
+200004b8:	0037f793          	andi	a5,a5,3
+200004bc:	02078863          	beqz	a5,200004ec <flash_read+0x6c>
+200004c0:	00004737          	lui	a4,0x4
+	{//先简化问题，只做4字节对其的
+		LogInt2('E' + (':'<<8), offset, (int)buffer);
+200004c4:	a4570513          	addi	a0,a4,-1467 # 3a45 <_start-0x1fffc5bb>
+200004c8:	00040613          	mv	a2,s0
+200004cc:	c7dff0ef          	jal	ra,20000148 <LogInt2>
+		return FLASH_ERR | (uint32_t)buffer;
+200004d0:	80000537          	lui	a0,0x80000
+200004d4:	00a46533          	or	a0,s0,a0
+		buffer += cur_count;
+	}
+    reg_write(FLASH_CTRL,0x00000001);//enable cache
+//	GD_LOGD("flash read return");
+    return 0;
+}
+200004d8:	00c12083          	lw	ra,12(sp)
+200004dc:	00812403          	lw	s0,8(sp)
+200004e0:	00412483          	lw	s1,4(sp)
+200004e4:	01010113          	addi	sp,sp,16
+200004e8:	00008067          	ret
+    reg_write(FLASH_CTRL, 0x00000000);//disable cache
+200004ec:	600607b7          	lui	a5,0x60060
+		reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_RD));//FLASH RD
+200004f0:	80000637          	lui	a2,0x80000
+    reg_write(FLASH_CTRL, 0x00000000);//disable cache
+200004f4:	0007a823          	sw	zero,16(a5) # 60060010 <stack_end+0x4005fa14>
+	while(count > 0)
+200004f8:	10000513          	li	a0,256
+	    reg_write(FLASH_ADDR, offset );//read address
+200004fc:	60060737          	lui	a4,0x60060
+		reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_RD));//FLASH RD
+20000500:	00360613          	addi	a2,a2,3 # 80000003 <stack_end+0x5ffffa07>
+	while(count > 0)
+20000504:	00049c63          	bnez	s1,2000051c <flash_read+0x9c>
+    reg_write(FLASH_CTRL,0x00000001);//enable cache
+20000508:	600607b7          	lui	a5,0x60060
+2000050c:	00100713          	li	a4,1
+20000510:	00e7a823          	sw	a4,16(a5) # 60060010 <stack_end+0x4005fa14>
+    return 0;
+20000514:	00000513          	li	a0,0
+20000518:	fc1ff06f          	j	200004d8 <flash_read+0x58>
+		if(count > FLASH_PAGE_SIZE)//256
+2000051c:	00048693          	mv	a3,s1
+20000520:	00957463          	bgeu	a0,s1,20000528 <flash_read+0xa8>
+20000524:	10000693          	li	a3,256
+		cur_len = (cur_count + 3) / 4;
+20000528:	00368793          	addi	a5,a3,3
+2000052c:	0027d313          	srli	t1,a5,0x2
+		reg_write(FLASH_DATN, cur_len * 4 - 1);//read length 256byte
+20000530:	ffc7f793          	andi	a5,a5,-4
+	    reg_write(FLASH_ADDR, offset );//read address
+20000534:	00b72223          	sw	a1,4(a4) # 60060004 <stack_end+0x4005fa08>
+		reg_write(FLASH_DATN, cur_len * 4 - 1);//read length 256byte
+20000538:	fff78793          	addi	a5,a5,-1
+2000053c:	00f72423          	sw	a5,8(a4)
+		reg_write(FLASH_COMD,(0x80000000 | FLASH_CMD_RD));//FLASH RD
+20000540:	00c72023          	sw	a2,0(a4)
+		for( i=0;i<cur_len;i++)
+20000544:	00000793          	li	a5,0
+				rdata = reg_read(FLASH_INTS);
+20000548:	01872283          	lw	t0,24(a4)
+			while((rdata & 0x4) == 0x0)
+2000054c:	0042f293          	andi	t0,t0,4
+20000550:	fe028ce3          	beqz	t0,20000548 <flash_read+0xc8>
+			buf_int[i] = reg_read(FLASH_RDATA);
+20000554:	00c72383          	lw	t2,12(a4)
+20000558:	00279293          	slli	t0,a5,0x2
+2000055c:	005402b3          	add	t0,s0,t0
+20000560:	0072a023          	sw	t2,0(t0)
+		for( i=0;i<cur_len;i++)
+20000564:	00178793          	addi	a5,a5,1
+20000568:	fef310e3          	bne	t1,a5,20000548 <flash_read+0xc8>
+		count -= cur_count;
+2000056c:	40d484b3          	sub	s1,s1,a3
+		offset += cur_count;
+20000570:	00d585b3          	add	a1,a1,a3
+		buffer += cur_count;
+20000574:	00d40433          	add	s0,s0,a3
+20000578:	f8dff06f          	j	20000504 <flash_read+0x84>

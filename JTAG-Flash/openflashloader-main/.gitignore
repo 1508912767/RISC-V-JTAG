@@ -1,0 +1,7 @@
+*.o*
+*.dasm
+*.verilog
+*.bin
+*.elf
+*.map
+build
